@@ -1,0 +1,26 @@
+users:
+  ops.meera:
+    roles: [business_operator]
+    password_env: DEMO_PASSWORD_MEERA
+    allowed_suppliers: ["100045"]
+    allowed_purchase_orders: ["4500017", "4500021", "4500030"]
+    max_payment_inr: 5000000
+  approver.arjun:
+    roles: [business_approver]
+    password_env: DEMO_PASSWORD_ARJUN
+  soc.kavya:
+    roles: [defender]
+    password_env: DEMO_PASSWORD_KAVYA
+  redteam:
+    roles: [attacker_sandbox]
+    password_env: DEMO_PASSWORD_REDTEAM
+  presenter:
+    roles: [business_operator, business_approver, defender, attacker_sandbox]
+    password_env: DEMO_PASSWORD_PRESENTER
+    sandbox_only: true
+    allowed_suppliers: ["100045"]
+    allowed_purchase_orders: ["4500017", "4500021", "4500030"]
+    max_payment_inr: 5000000
+  admin:
+    roles: [admin]
+    password_env: DEMO_PASSWORD_ADMIN

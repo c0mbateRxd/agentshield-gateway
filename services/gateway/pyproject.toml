@@ -1,0 +1,19 @@
+[project]
+name = "agentshield-gateway"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi", "uvicorn", "pydantic>=2", "sqlalchemy>=2", "psycopg[binary]", "alembic",
+  "pyjwt", "cryptography", "rapidfuzz", "httpx", "structlog", "sse-starlette",
+  "pyyaml", "jsonschema",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 110

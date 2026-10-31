@@ -1,0 +1,9 @@
+price_tolerance: 0.05
+bank_match_allow: 90
+bank_match_hold: 70
+cooling_off_days: 3
+bank_change_lookback_hours: 24
+high_value_approval_inr: 200000   # assumption (spec 13.5)
+oracle_timeout_s: 2
+timestamp_window_s: 60
+denial_budget: 3

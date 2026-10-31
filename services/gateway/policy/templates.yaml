@@ -1,0 +1,14 @@
+AP_INBOX_V1:
+  ttl_s: 900
+  max_calls: 25
+  max_payment_inr: 5000000
+  tools: [read_inbox, get_document_text, get_purchase_order, get_goods_receipts, get_supplier,
+          get_supplier_bank, list_open_invoices, post_supplier_invoice, execute_payment,
+          update_supplier_bank, book_freight, flag_suspicious_message, request_human_approval,
+          complete_task]
+READ_ONLY_V1:
+  ttl_s: 900
+  max_calls: 25
+  max_payment_inr: 0
+  tools: [read_inbox, get_document_text, get_purchase_order, get_goods_receipts, get_supplier,
+          get_supplier_bank, list_open_invoices]
