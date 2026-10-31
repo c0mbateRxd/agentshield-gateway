@@ -103,6 +103,19 @@ def test_nonce_reuse_and_write_replay(h):
     assert len(h.erp.writes) == 1
 
 
+def test_replayed_deny_stays_deny(h):
+    lease = h.new_lease()
+    args = {"supplier": "100045", "purchase_order": "4500021", "supplier_invoice_ref": "FIXED", "invoice_date": "2026-10-30",
+            "items": [{"purchase_order_item": "10", "quantity": 100, "unit_price_inr": 12700}],
+            "gross_amount_inr": 1270000, "source_document_id": "d"}
+    cid = str(uuid.uuid4())
+    first = h.call("post_supplier_invoice", args, key="post:fixed", call_id=cid, lease=lease)
+    again = h.call("post_supplier_invoice", args, key="post:fixed", call_id=cid, lease=lease)
+    assert first[0] == 403 and again[0] == 403  # a replayed DENY must not turn into 200
+    assert again[1]["idempotent_replay"] is True and again[1]["decision_id"] == first[1]["decision_id"]
+    assert h.erp.writes == []
+
+
 def test_stale_and_bad_timestamp(h):
     old = (h.ctx.now() - timedelta(seconds=120)).isoformat()
     assert reason(h.call("get_supplier", {"supplier": "100045"}, issued_at=old)) == "DENY_STALE_REQUEST"
@@ -304,33 +317,32 @@ def test_unexpected_erp_data_shape_denies(h):
 
 # ---- concurrency ----------------------------------------------------------------------------------------
 
-def _parallel_pay(h, keys):
-    lease = h.new_lease()
+def _parallel_pay(h, keys, lease_per_call=False):
+    shared = None if lease_per_call else h.new_lease()
+    leases = [shared or h.new_lease() for _ in keys]
     ctx = h.ctx
 
-    def one(key):
+    def one(arg):
+        key, lease = arg
         body = {"call_id": str(uuid.uuid4()), "task_id": lease["task_id"], "step_id": "s", "tool": "execute_payment",
                 "idempotency_key": key, "issued_at": ctx.now().isoformat(),
                 "args": {"supplier_invoice": "5105600031", "fiscal_year": "2026", "amount_inr": 980000}}
         return pipeline.handle(ctx, h.agent_token, lease["lease_token"], body)
     with ThreadPoolExecutor(20) as ex:
-        return list(ex.map(one, keys))
+        return list(ex.map(one, zip(keys, leases)))
 
 
 def test_20_parallel_payments_same_key_executes_once(h):
     out = _parallel_pay(h, ["pay:same"] * 20)
     assert len(h.erp.writes) == 1
-    assert all(s == 200 for s, _ in out)
+    assert [(s, b["reason_code"]) for s, b in out if s != 200] == []
     assert sum(1 for _, b in out if not b["idempotent_replay"]) == 1
 
 
 def test_20_parallel_payments_distinct_keys_one_allow(h):
-    out = _parallel_pay(h, [f"pay:{i}" for i in range(20)])
+    out = _parallel_pay(h, [f"pay:{i}" for i in range(20)], lease_per_call=True)  # own lease each: no denial budget noise
     assert len(h.erp.writes) == 1
-    assert sum(1 for _, b in out if b["decision"] == "ALLOW") == 1
-    rest = [b["reason_code"] for _, b in out if b["decision"] != "ALLOW"]
-    assert rest and all(r in ("DENY_DUPLICATE_PAYMENT", "DENY_DENIAL_BUDGET_EXHAUSTED", "DENY_LEASE_SUSPENDED") for r in rest)
-    assert "DENY_DUPLICATE_PAYMENT" in rest
+    assert sorted(b["reason_code"] for _, b in out) == ["ALLOW_OK"] + ["DENY_DUPLICATE_PAYMENT"] * 19
 
 
 # ---- profiles + sandbox ---------------------------------------------------------------------------------

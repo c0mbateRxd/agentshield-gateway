@@ -6,7 +6,7 @@ Spec: `MASTER_SPEC.md` (Prompt 1). Task: `../../02_Prompt_Chandan.md`.
 ```
 cd services/gateway
 python -m venv .venv && . .venv/Scripts/activate && pip install -e ".[dev]"
-python -m pytest tests          # 84 tests, SQLite, fake ERP/oracles
+python -m pytest tests          # 85 tests, SQLite, fake ERP/oracles
 python -m scripts.bench         # decision latency
 python -m scripts.gen_keys      # Ed25519 dev keypair for .env
 uvicorn app.main:app_factory --factory --port 8000

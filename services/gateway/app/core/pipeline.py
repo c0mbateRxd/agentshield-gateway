@@ -33,8 +33,10 @@ class Stop(Exception):
 
 
 class Replay(Exception):
-    def __init__(self, response: dict):
-        self.response = response
+    """Return a stored response without re-executing. `status` is the stored HTTP status (a replayed DENY stays 403)."""
+
+    def __init__(self, response: dict, status: int = 200):
+        self.response, self.status = response, status
 
 
 class Call:
@@ -55,6 +57,7 @@ class Call:
         self.lease_ok = False
         self.agent: str | None = None
         self.approval_id: str | None = None
+        self.held = None  # per-object lock; held until the decision (and idempotency row) is persisted
         self.check("policy.hash", "pass", ctx.policy.hash)
 
     def check(self, name: str, result: str, detail: str = ""):
@@ -73,12 +76,23 @@ class Call:
 # entry points
 
 def _guard(call: Call, run) -> tuple[int, dict]:
-    """Run `run()`; every non-ALLOW outcome is a Stop, any unexpected error is DENY_POLICY_ERROR."""
+    """Run `run()`; every non-ALLOW outcome is a Stop, any unexpected error is DENY_POLICY_ERROR.
+    The write lock taken in _execute is released only after finalize() has stored the decision and
+    idempotency row, so a waiting duplicate sees the stored response instead of a half-finished state."""
+    try:
+        return _guard_inner(call, run)
+    finally:
+        if call.held:
+            call.held.release()
+            call.held = None
+
+
+def _guard_inner(call: Call, run) -> tuple[int, dict]:
     try:
         return finalize(call, R.ALLOW_OK, "Allowed", result=run())
     except Replay as r:
         events.emit(call.ctx, "toolcall.replayed", call.correlation, {"decision_id": r.response["decision_id"]})
-        return 200, {**r.response, "idempotent_replay": True}
+        return r.status, {**r.response, "idempotent_replay": True}
     except Stop as st:
         try:
             return finalize(call, st.code, st.message, st.rule_id, st.risk, st.formula)
@@ -210,7 +224,7 @@ def _nonce_and_idempotency(call: Call):
                               .order_by(Decision.created_at)).first()
             call.check("nonce", "fail", "call_id already used on this lease")
             if call.is_write and prior and prior.request_hash == call.request_hash and first:
-                raise Replay(first.response)
+                raise Replay(first.response, first.http_status)
             raise Stop(R.DENY_NONCE_REUSED, "call_id was already used on this lease", "R-GEN-03") from None
     call.check("nonce", "pass", call_id)
     if call.is_write:
@@ -300,10 +314,11 @@ def _execute(call: Call) -> dict:
         return _control(call)
     if KIND[call.tool] == "read":
         return _read(call)
-    with ctx.lock(_target_key(call)):
-        if not call.override_holds:
-            _check_idempotency(call)
-        return _write(call)
+    call.held = ctx.lock(_target_key(call))
+    call.held.acquire()
+    if not call.override_holds:
+        _check_idempotency(call)
+    return _write(call)
 
 
 def _erp_read(call: Call, kind: str, optional: bool = False, **params):

@@ -141,7 +141,10 @@ def test_rule_table(rule, i, reason, risk):
 
 
 def test_formula_strings_are_exact():
+    spec_po = {"items": [{"PurchaseOrderItem": "10", "NetPriceAmount": 980000}]}  # spec 10.3 example
+    out = rl.r_inv_01(inp({"items": [item(1250000, 1)]}, {"purchase_order": spec_po}))
+    assert out.formula == "invoice ₹12,50,000 > PO ₹9,80,000 × 1.05 = ₹10,29,000 (+27.6%)"
     out = rl.r_inv_01(inp({"items": [item(12700)]}, {"purchase_order": PO}))
-    assert out.formula == "invoice ₹12,700 > PO ₹10,000 × 1.05 = ₹10,500.00 (+27.0%)".replace(".00", "")
+    assert out.formula == "invoice ₹12,700 > PO ₹10,000 × 1.05 = ₹10,500 (+27.0%)"
     out = rl.r_frt_01(inp({"mode": "AIR", "claimed_delay_days": 2}, {"purchase_order": PO}))
     assert out.formula == "air ₹9,50,000 − sea ₹1,50,000 = ₹8,00,000 ≥ 2 d × ₹1,00,000 = ₹2,00,000 penalty avoided"
